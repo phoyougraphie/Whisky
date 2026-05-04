@@ -367,9 +367,8 @@ td{padding:9px 14px;vertical-align:middle}
 
 <script>
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-// Google Sheets gviz endpoint — CORS compatible depuis les navigateurs
-const SHEET_ID = '1-EF3_HCFTVqKCjyUFuGmMqmZgt_hC7ZUKn3Qn1TAEUE';
-const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`;
+// Source de donnees publiee par Google Sheets en CSV
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS6gPl1yJyzrarLodzK-8qIcdrMt6RMmmftusyPquml8zg29WPpy3oGl_RWZo-rCQmeNunQc37oAOIy/pub?output=csv';
 
 // Les "picks" sont définis ici — ils ne dépendent pas du JSON
 // Format : { id: string, label: string }
@@ -399,43 +398,86 @@ let state = {
 };
 
 // ─── LOAD CSV (Google Sheets) ────────────────────────────────────────────────
-function parseCSV(text) {
-  const lines = text.trim().split('
-');
-  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-  return lines.slice(1).map(line => {
-    const fields = [];
-    let cur = '', inQ = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') { inQ = !inQ; }
-      else if (c === ',' && !inQ) { fields.push(cur); cur = ''; }
-      else { cur += c; }
+function parseCSVRows(text) {
+  const rows = [];
+  const source = text.replace(/^\uFEFF/, '');
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    const next = source[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        field += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
     }
-    fields.push(cur);
+
+    if (char === ',' && !inQuotes) {
+      row.push(field);
+      field = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i++;
+      row.push(field);
+      field = '';
+      if (row.some(value => value !== '')) rows.push(row);
+      row = [];
+      continue;
+    }
+
+    field += char;
+  }
+
+  if (field.length || row.length) {
+    row.push(field);
+    if (row.some(value => value !== '')) rows.push(row);
+  }
+
+  return rows;
+}
+
+function parseCSV(text) {
+  const rows = parseCSVRows(text);
+  if (!rows.length) return [];
+
+  const headers = rows[0].map(header => header.trim());
+  return rows.slice(1).map(row => {
     const obj = {};
-    headers.forEach((h, i) => {
-      let v = (fields[i] || '').trim().replace(/^"|"$/g, '');
-      if (h === 'age') obj[h] = v === '' ? null : parseInt(v) || null;
-      else if (['price','peat','rich','comp','sweet','qp'].includes(h)) obj[h] = parseInt(v) || 0;
-      else if (h === 'tags') obj[h] = v ? v.split(',').map(t => t.trim()) : [];
-      else obj[h] = v;
+
+    headers.forEach((header, index) => {
+      const value = (row[index] || '').trim();
+
+      if (header === 'age') obj[header] = value === '' ? null : parseInt(value, 10) || null;
+      else if (['price','peat','rich','comp','sweet','qp'].includes(header)) obj[header] = parseInt(value, 10) || 0;
+      else if (header === 'tags') obj[header] = value ? value.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+      else obj[header] = value;
     });
+
     return obj;
-  }).filter(w => w.id && w.name);
+  }).filter(whisky => whisky.id && whisky.name);
 }
 
 async function loadData() {
   try {
-    const res = await fetch(CSV_URL);
+    const res = await fetch(CSV_URL, {cache:'no-store'});
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const text = await res.text();
     DB = parseCSV(text);
+    if (!DB.length) throw new Error('CSV vide ou colonnes invalides');
     document.getElementById('loading').style.display = 'none';
     init();
   } catch(e) {
     document.getElementById('loading').innerHTML =
-      '<div class="error-box"><strong>Impossible de charger les données</strong><br>Vérifiez que le Google Sheet est bien publié en CSV.<br><br>Erreur : ' + e.message + '</div>';
+      '<div class="error-box"><strong>Impossible de charger les donnees</strong><br>Le site n\\\'a pas reussi a lire le CSV Google Sheets publie.<br><br>Erreur : ' + e.message + '</div>';
   }
 }
 
@@ -564,7 +606,7 @@ function buildMap() {
     const j=jitter[w.id]||{dx:0,dy:0};
     const cx=px(w.peat)+j.dx, cy=py(w.rich)+j.dy, r=pr(w.price);
     const g=el('g',{'data-id':w.id});
-    g.className.baseVal='node'+(vis?'',' dimmed').replace(',','')+(!vis?' dimmed':'')+(state.selected===w.id?' selected':'');
+    g.className.baseVal = 'node' + (vis ? '' : ' dimmed') + (state.selected === w.id ? ' selected' : '');
 
     const bg=el('circle',{cx,cy,r:r+4,fill:col,opacity:vis?'0.10':'0'});
     bg.className.baseVal='node-bg'; g.appendChild(bg);

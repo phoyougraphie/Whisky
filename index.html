@@ -367,7 +367,9 @@ td{padding:9px 14px;vertical-align:middle}
 
 <script>
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vS6gPl1yJyzrarLodzK-8qIcdrMt6RMmmftusyPquml8zg29WPpy3oGl_RWZo-rCQmeNunQc37oAOIy/pub?output=csv';
+// Google Sheets gviz endpoint — CORS compatible depuis les navigateurs
+const SHEET_ID = '1-EF3_HCFTVqKCjyUFuGmMqmZgt_hC7ZUKn3Qn1TAEUE';
+const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&gid=0`;
 
 // Les "picks" sont définis ici — ils ne dépendent pas du JSON
 // Format : { id: string, label: string }
